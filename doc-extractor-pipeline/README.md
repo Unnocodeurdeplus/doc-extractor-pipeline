@@ -31,6 +31,26 @@ Pour scraper tout un site de documentation, utiliser le préfixe `crawl:` :
 crawl: https://docs.example.com/
 ```
 
+### Interface visuelle de sélection
+
+Après le crawl, une interface visuelle permet de sélectionner les pages :
+
+```markdown
+## 🔗 Sélectionnez les pages à extraire
+
+**[Tout cocher]** **[Tout décocher]** **[Inverser]**
+
+### 📁 (root)
+- [1] Welcome
+- [2] Getting Started
+
+### 📁 /learn/
+- [3] Learning path
+- [4] Tutorials
+```
+
+Utilisez la commande `extract` pour confirmer.
+
 ### Configuration inline
 
 Vous pouvez configurer le crawl directement dans le message :
@@ -47,25 +67,32 @@ crawl: https://docs.example.com/ max:50 delay:1.0 exclude:/blog/ include:/docs/ 
 | `include:PATTERN` | Inclure seulement ces URLs | `include:/docs/` |
 | `depth:N` | Profondeur max du crawl | `depth:3` |
 
-### Aide de configuration
+### Syntaxe d'extraction
 
-Tapez `config?` pour voir les options de configuration interactives.
+| Commande | Description |
+|----------|-------------|
+| `extract all` | Tout sélectionner |
+| `extract 1,3,5` | Pages 1, 3 et 5 |
+| `extract 1-5` | Pages 1 à 5 |
+| `extract all -2` | Tout sauf la page 2 |
+| `extract all -2 -4` | Tout sauf 2 et 4 |
+| `extract /docs/` | Sélectionner le dossier /docs/ |
 
 ## Fonctionnalités
 
 - ✅ Extraction URL unique → Markdown
+- ✅ **Métadonnées en blockquote** (Title, URL, Hostname, Date)
 - ✅ Arborescence H1-H4 (sommaire)
-- ✅ Métadonnées (Title, Source, Date)
-- ✅ Nettoyage des `#` de fin
 - ✅ **Crawl de site complet**
+- ✅ **Interface visuelle de sélection** avec cases à cocher
+- ✅ **Boutons globaux** (Tout cocher / Décocher / Inverser)
+- ✅ **Syntaxe d'exclusion** (`all -2`)
 - ✅ **Tree view ASCII** (vue arborescente)
 - ✅ **Filtrage par patterns** (regex)
 - ✅ **Rate limiting** (évite le ban)
 - ✅ **Export ZIP** avec structure
 - ✅ **SUMMARY.md** généré automatiquement
 - ✅ **Métadonnées JSON** pour suivi
-- ✅ **Support des redirections** (308, 301, etc.)
-- ✅ **Historique versionné** (optionnel)
 
 ## Configuration (Valves)
 

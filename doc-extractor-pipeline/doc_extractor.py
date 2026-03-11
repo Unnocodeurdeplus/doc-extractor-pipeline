@@ -1,8 +1,8 @@
 """
 title: Doc Extractor
 author: OpenWebUI
-version: 2.0
-description: Extract documentation URLs to Markdown with full site crawling, interactive config, and ZIP export
+version: 2.1
+description: Extract documentation URLs to Markdown with visual selection interface
 """
 
 from typing import List, Union, Generator, Iterator, Optional, Set, Dict
@@ -183,19 +183,28 @@ class Pipe:
         toc: str,
         content: str,
     ) -> str:
-        """Build the final Markdown output."""
+        """Build the final Markdown output with blockquote metadata."""
         title = metadata.get("title", "Untitled")
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
+        hostname = urlparse(url).netloc
+        
+        # Extract description from content or use from metadata
+        description = metadata.get("description", "")
+        
         output_parts = [
-            "---",
-            f"**Title**: {title}",
-            f"**Source**: {url}",
-            f"**Extracted**: {date}",
-            "---\n",
-            "## 📑 Sommaire / Arborescence\n",
+            f"> **Title**: {title}",
+            f"> **URL**: {url}",
+            f"> **Hostname**: {hostname}",
+            f"> **Extracted**: {date}",
+            "",
+            f"---",
+            "",
+            f"# 📖 {title}",
+            "",
+            f"## 📑 Sommaire / Arborescence",
             toc,
-            "\n\n## 📄 Contenu\n",
+            "",
+            f"## 📄 Contenu",
             content,
         ]
 
@@ -484,8 +493,8 @@ class Pipe:
         buffer.seek(0)
         return buffer.getvalue()
 
-    def build_crawl_output(self, pages: List[dict], base_url: str) -> str:
-        """Build output for crawled site."""
+    def build_crawl_output(self, pages: List[dict], base_url: str, show_selection: bool = True) -> str:
+        """Build output for crawled site with optional selection UI."""
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         tree_view = self.build_tree_view(pages, base_url)
@@ -496,19 +505,23 @@ class Pipe:
             f"**Pages**: {len(pages)}",
             f"**Crawled**: {date}",
             "---\n",
-            "## 🗂️ Arborescence\n",
-            tree_view,
-            "\n## 📑 Pages Crawled\n",
         ]
         
-        for i, page in enumerate(pages[:15], 1):
-            output.append(f"{i}. [{page['title']}]({page['url']})")
-        
-        if len(pages) > 15:
-            output.append(f"\n... and {len(pages) - 15} more pages")
-        
-        output.append("\n## 📦 Export ZIP")
-        output.append("Use `download` command to get the ZIP file with all Markdown pages.")
+        if show_selection:
+            # Show selection UI with checkboxes
+            output.append(tree_view)
+            output.append(self.build_selection_ui(pages, base_url))
+        else:
+            # Show simple list
+            output.append("## 🗂️ Arborescence\n")
+            output.append(tree_view)
+            output.append("\n## 📑 Pages Crawled\n")
+            
+            for i, page in enumerate(pages[:15], 1):
+                output.append(f"{i}. [{page['title']}]({page['url']})")
+            
+            if len(pages) > 15:
+                output.append(f"\n... and {len(pages) - 15} more pages")
         
         return "\n".join(output)
 
@@ -567,6 +580,188 @@ class Pipe:
         
         return message.strip(), config, crawl_mode
 
+    def group_pages_by_folder(self, pages: List[dict]) -> Dict[str, List[dict]]:
+        """Group pages by folder/path for selection UI."""
+        folders: Dict[str, List[dict]] = {}
+        
+        for page in pages:
+            parsed = urlparse(page['url'])
+            path = parsed.path.strip('/')
+            
+            if not path or '/' not in path:
+                folder = '/'
+            else:
+                folder = '/' + path.split('/')[0] + '/'
+            
+            if folder not in folders:
+                folders[folder] = []
+            folders[folder].append(page)
+        
+        return folders
+
+    def build_selection_ui(self, pages: List[dict], base_url: str) -> str:
+        """Build visual selection interface with checkboxes."""
+        folders = self.group_pages_by_folder(pages)
+        
+        lines = [
+            "",
+            "---",
+            "",
+            "## 🔗 Sélectionnez les pages à extraire",
+            "",
+            "**[Tout cocher]** **[Tout décocher]** **[Inverser]**",
+            "",
+        ]
+        
+        page_num = 0
+        for folder in sorted(folders.keys()):
+            folder_pages = folders[folder]
+            
+            # Folder header
+            folder_display = folder if folder != '/' else '(root)'
+            lines.append(f"### 📁 {folder_display}")
+            lines.append("")
+            
+            # Pages in folder
+            for page in folder_pages:
+                page_num += 1
+                title = page.get('title', 'Untitled')
+                url = page.get('url', '')
+                lines.append(f"- [{page_num}] {title}")
+            
+            lines.append("")
+        
+        # Summary
+        total_pages = len(pages)
+        lines.extend([
+            "---",
+            "",
+            f"**Total : {total_pages} pages**",
+            "",
+            "💡 **Syntaxe alternative** :",
+            "```",
+            f"extract all              # Tout sélectionner",
+            f"extract all -2           # Tout sauf chapitre 2",
+            f"extract all -2 -4        # Tout sauf 2 et 4",
+            f"extract 1,3,5            # Pages 1, 3 et 5",
+            f"extract /docs/           # Sélectionner le dossier /docs/",
+            "```",
+            "",
+            "**[⬇️ Extraire la sélection]**",
+            "",
+        ])
+        
+        return "\n".join(lines)
+
+    def parse_extract_command(self, command: str, pages: List[dict]) -> List[dict]:
+        """Parse extract command and return selected pages."""
+        command = command.strip().lower()
+        
+        if not command:
+            return pages  # Return all by default
+        
+        # Extract page numbers and exclusions
+        selected = []
+        excluded_nums = set()
+        excluded_urls = set()
+        
+        # Parse "all -N -M" syntax
+        parts = command.split()
+        
+        if 'all' in parts:
+            # Start with all pages
+            selected = list(pages)
+            
+            # Parse exclusions like -2, -2-5, -(3.3)
+            for part in parts:
+                if part.startswith('-'):
+                    num_str = part[1:]
+                    
+                    # Check for range like -2-5
+                    if '-' in num_str and num_str.count('-') == 1:
+                        try:
+                            start, end = map(int, num_str.split('-'))
+                            for i in range(start, min(end + 1, len(pages) + 1)):
+                                excluded_nums.add(i)
+                        except:
+                            pass
+                    else:
+                        # Single number
+                        try:
+                            excluded_nums.add(int(num_str))
+                        except:
+                            # Might be a URL pattern
+                            excluded_urls.add(num_str)
+                
+                elif part.startswith('+'):
+                    # Specific inclusion after exclusion
+                    try:
+                        included_nums.add(int(part[1:]))
+                    except:
+                        pass
+        
+        elif command.replace(',', ' ').replace('-', ' ').split():
+            # Handle numbers like "1,3,5" or "1-5" or "1 3 5"
+            try:
+                parts = command.replace(',', ' ').split()
+                nums = []
+                for part in parts:
+                    if '-' in part:
+                        # Range like 1-5
+                        try:
+                            start, end = map(int, part.split('-'))
+                            nums.extend(range(start, end + 1))
+                        except:
+                            pass
+                    else:
+                        try:
+                            nums.append(int(part))
+                        except:
+                            pass
+                selected = [pages[i-1] for i in nums if 0 < i <= len(pages)]
+            except:
+                selected = []
+        
+        else:
+            # Check for folder selection like /docs/
+            for page in pages:
+                if command in page.get('url', '') or command.rstrip('/') in page.get('url', ''):
+                    selected.append(page)
+        
+        # Apply exclusions
+        if excluded_nums:
+            selected = [p for i, p in enumerate(selected) if (i + 1) not in excluded_nums]
+        
+        if excluded_urls:
+            selected = [p for p in selected if not any(ex in p.get('url', '') for ex in excluded_urls)]
+        
+        return selected
+
+    def extract_pages(self, pages: List[dict], base_url: str) -> str:
+        """Extract selected pages and return combined Markdown."""
+        if not pages:
+            return "❌ Aucune page sélectionnée."
+        
+        results = []
+        
+        for i, page in enumerate(pages, 1):
+            # Re-fetch content for each page
+            url = page.get('url', '')
+            success, html, metadata = self.fetch_page(url)
+            
+            if success:
+                content = self.extract_content(html)
+                headings = self.extract_structure(html)
+                toc = self.build_toc(headings)
+                
+                result = self.build_output(url, metadata, toc, content)
+                results.append(result)
+        
+        # Combine all results
+        combined = "\n\n---\n\n".join(results)
+        
+        return combined
+
     def build_config_questions(self) -> str:
         """Build interactive configuration questions."""
         return """
@@ -613,6 +808,22 @@ Ou tapez juste l'URL pour utiliser les paramètres par défaut.
         if user_message.lower().startswith("config?"):
             return self.build_config_questions()
         
+        # Handle extract command (after crawl has been done)
+        if user_message.lower().startswith("extract"):
+            # Extract the command part
+            command = user_message[7:].strip() if user_message.lower().startswith("extract") else user_message
+            
+            # Check if we have cached pages from previous crawl
+            if hasattr(self, '_last_pages') and self._last_pages:
+                selected = self.parse_extract_command(command, self._last_pages)
+                base_url = self._last_base_url if hasattr(self, '_last_base_url') else ""
+                
+                result = self.extract_pages(selected, base_url)
+                result += "\n\n---\n\n✅ Extraction terminée !"
+                return result
+            else:
+                return "❌ Aucune page à extraire. Faites d'abord un crawl avec `crawl: URL`"
+        
         # Parse configuration from message
         url, config, crawl_mode = self.parse_config_from_message(user_message)
         self.crawl_config = config
@@ -638,9 +849,12 @@ Ou tapez juste l'URL pour utiliser les paramètres par défaut.
             if not success:
                 return f"❌ **Erreur lors du crawl**\n\n{crawl_metadata.get('error', 'Unknown error')}"
             
-            base_url = crawl_metadata.get("base_url", url)
+            # Cache pages for extract command
+            self._last_pages = pages
+            self._last_base_url = crawl_metadata.get("base_url", url)
+            base_url = self._last_base_url
             
-            # Generate ZIP in memory (but can't send via chat - just show info)
+            # Generate ZIP info
             try:
                 zip_data = self.create_zip_export(pages, base_url)
                 zip_size = len(zip_data)
@@ -648,7 +862,7 @@ Ou tapez juste l'URL pour utiliser les paramètres par défaut.
             except Exception:
                 zip_info = ""
             
-            return config_info + self.build_crawl_output(pages, base_url) + zip_info
+            return config_info + self.build_crawl_output(pages, base_url, show_selection=True) + zip_info
 
         # Single page extraction
         success, html, metadata = self.fetch_page(url)
