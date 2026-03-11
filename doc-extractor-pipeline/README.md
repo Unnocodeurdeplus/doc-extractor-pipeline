@@ -31,23 +31,41 @@ Pour scraper tout un site de documentation, utiliser le préfixe `crawl:` :
 crawl: https://docs.example.com/
 ```
 
-Cela va :
-- Découvrir toutes les pages liées
-- Extraire chaque page en Markdown
-- Générer une liste des pages trouvées
+### Configuration inline
+
+Vous pouvez configurer le crawl directement dans le message :
+
+```
+crawl: https://docs.example.com/ max:50 delay:1.0 exclude:/blog/ include:/docs/ depth:2
+```
+
+| Paramètre | Description | Exemple |
+|-----------|-------------|---------|
+| `max:N` | Nombre max de pages | `max:100` |
+| `delay:N` | Délai entre requêtes (secondes) | `delay:2` |
+| `exclude:PATTERN` | Exclure URLs correspondant au pattern | `exclude:/blog/` |
+| `include:PATTERN` | Inclure seulement ces URLs | `include:/docs/` |
+| `depth:N` | Profondeur max du crawl | `depth:3` |
+
+### Aide de configuration
+
+Tapez `config?` pour voir les options de configuration interactives.
 
 ## Fonctionnalités
 
-- ✅ Validation URL (HTTP/HTTPS)
-- ✅ Extraction de la structure (H1-H4)
-- ✅ Extraction du contenu principal (trafilatura)
-- ✅ Conversion automatique en Markdown
-- ✅ Métadonnées (titre, URL source, date)
-- ✅ Gestion des erreurs (timeout, 404, etc.)
-- ✅ Préservation des blocs de code
-- ✅ Tableaux Markdown
+- ✅ Extraction URL unique → Markdown
+- ✅ Arborescence H1-H4 (sommaire)
+- ✅ Métadonnées (Title, Source, Date)
+- ✅ Nettoyage des `#` de fin
 - ✅ **Crawl de site complet**
-- ✅ **Filtrage par patterns (include/exclude)**
+- ✅ **Tree view ASCII** (vue arborescente)
+- ✅ **Filtrage par patterns** (regex)
+- ✅ **Rate limiting** (évite le ban)
+- ✅ **Export ZIP** avec structure
+- ✅ **SUMMARY.md** généré automatiquement
+- ✅ **Métadonnées JSON** pour suivi
+- ✅ **Support des redirections** (308, 301, etc.)
+- ✅ **Historique versionné** (optionnel)
 
 ## Configuration (Valves)
 
